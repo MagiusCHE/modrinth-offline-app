@@ -15,31 +15,39 @@ echo "Dist directory: $DIST_DIR"
 # =============================================================================
 # PKG_CONFIG_PATH Setup (for Steam Deck and other non-standard setups)
 # =============================================================================
-# Auto-detect common pkg-config paths if PKG_CONFIG_PATH is not set
-if [ -z "$PKG_CONFIG_PATH" ]; then
-    DETECTED_PKG_PATHS=""
+# Auto-detect common pkg-config paths
+DETECTED_PKG_PATHS=""
 
-    # Common locations for .pc files
-    for pc_dir in \
-        "/usr/lib/pkgconfig" \
-        "/usr/lib64/pkgconfig" \
-        "/usr/share/pkgconfig" \
-        "/usr/lib/x86_64-linux-gnu/pkgconfig" \
-        "/usr/local/lib/pkgconfig" \
-        "/usr/local/lib64/pkgconfig"; do
-        if [ -d "$pc_dir" ]; then
-            if [ -n "$DETECTED_PKG_PATHS" ]; then
-                DETECTED_PKG_PATHS="$DETECTED_PKG_PATHS:$pc_dir"
-            else
-                DETECTED_PKG_PATHS="$pc_dir"
-            fi
+# Common locations for .pc files (order matters - more specific first)
+for pc_dir in \
+    "/usr/lib/pkgconfig" \
+    "/usr/share/pkgconfig" \
+    "/usr/lib64/pkgconfig" \
+    "/usr/lib/x86_64-linux-gnu/pkgconfig" \
+    "/usr/local/lib/pkgconfig" \
+    "/usr/local/lib64/pkgconfig"; do
+    if [ -d "$pc_dir" ]; then
+        if [ -n "$DETECTED_PKG_PATHS" ]; then
+            DETECTED_PKG_PATHS="$DETECTED_PKG_PATHS:$pc_dir"
+        else
+            DETECTED_PKG_PATHS="$pc_dir"
         fi
-    done
-
-    if [ -n "$DETECTED_PKG_PATHS" ]; then
-        export PKG_CONFIG_PATH="$DETECTED_PKG_PATHS"
-        echo "Auto-configured PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
     fi
+done
+
+if [ -n "$DETECTED_PKG_PATHS" ]; then
+    # Append to existing PKG_CONFIG_PATH if set, otherwise set it
+    if [ -n "$PKG_CONFIG_PATH" ]; then
+        export PKG_CONFIG_PATH="$DETECTED_PKG_PATHS:$PKG_CONFIG_PATH"
+    else
+        export PKG_CONFIG_PATH="$DETECTED_PKG_PATHS"
+    fi
+    echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+fi
+
+# Also set PKG_CONFIG_LIBDIR as fallback (some systems need this)
+if [ -z "$PKG_CONFIG_LIBDIR" ]; then
+    export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 fi
 
 # =============================================================================
