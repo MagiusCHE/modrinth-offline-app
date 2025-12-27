@@ -1,0 +1,122 @@
+diff --git a/packages/app-lib/src/api/minecraft_auth.rs b/packages/app-lib/src/api/minecraft_auth.rs
+index 74411116..fd7ff8e5 100644
+--- a/packages/app-lib/src/api/minecraft_auth.rs
++++ b/packages/app-lib/src/api/minecraft_auth.rs
+@@ -38,6 +38,15 @@ pub async fn finish_login(
+ 
+ #[tracing::instrument]
+ pub async fn get_default_user() -> crate::Result<Option<uuid::Uuid>> {
++    // Check for offline mode via environment variable
++    if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
++        if !username.is_empty() {
++            // Return the offline user's UUID
++            let offline_creds = Credentials::offline(username);
++            return Ok(Some(offline_creds.offline_profile.id));
++        }
++    }
++
+     let state = State::get().await?;
+     let user = Credentials::get_active(&state.pool).await?;
+     Ok(user.map(|user| user.offline_profile.id))
+@@ -84,6 +93,14 @@ pub async fn remove_user(uuid: uuid::Uuid) -> crate::Result<()> {
+ /// Get a copy of the list of all user credentials
+ #[tracing::instrument]
+ pub async fn users() -> crate::Result<Vec<Credentials>> {
++    // Check for offline mode via environment variable
++    if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
++        if !username.is_empty() {
++            // Return only the offline user when in offline mode
++            return Ok(vec![Credentials::offline(username)]);
++        }
++    }
++
+     let state = State::get().await?;
+     let users = Credentials::get_all(&state.pool).await?;
+     Ok(users.into_iter().map(|x| x.1).collect())
+diff --git a/packages/app-lib/src/api/profile/mod.rs b/packages/app-lib/src/api/profile/mod.rs
+index 935c837a..0427bb49 100644
+--- a/packages/app-lib/src/api/profile/mod.rs
++++ b/packages/app-lib/src/api/profile/mod.rs
+@@ -634,6 +634,11 @@ pub async fn run(
+     path: &str,
+     quick_play_type: QuickPlayType,
+ ) -> crate::Result<ProcessMetadata> {
++    // Debug: check if offline mode env var is set
++    let runtime_env = std::env::var("MODRINTH_OFFLINE_USERNAME");
++    let compile_env = option_env!("MODRINTH_OFFLINE_USERNAME");
++    tracing::info!("MODRINTH_OFFLINE_USERNAME - runtime: {:?}, compile-time: {:?}", runtime_env, compile_env);
++
+     let state = State::get().await?;
+ 
+     let default_account = Credentials::get_default_credential(&state.pool)
+diff --git a/packages/app-lib/src/state/minecraft_auth.rs b/packages/app-lib/src/state/minecraft_auth.rs
+index a0b8db9e..4ce27d4e 100644
+--- a/packages/app-lib/src/state/minecraft_auth.rs
++++ b/packages/app-lib/src/state/minecraft_auth.rs
+@@ -375,10 +375,23 @@ impl Credentials {
+ 
+     /// Like [`get_active`](Self::get_active), but enforces credentials to be
+     /// successfully refreshed unless the network is unreachable or times out.
++    ///
++    /// If the `MODRINTH_OFFLINE_USERNAME` environment variable is set, returns
++    /// fake offline credentials with that username, bypassing Microsoft authentication
++    /// entirely. This is useful for playing on offline-mode servers or with
++    /// custom authentication systems like Drasl.
+     #[tracing::instrument]
+     pub async fn get_default_credential(
+         exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
+     ) -> crate::Result<Option<Credentials>> {
++        // Check for offline mode via environment variable (runtime only)
++        if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
++            if !username.is_empty() {
++                tracing::info!("Using offline mode with username: {}", username);
++                return Ok(Some(Credentials::offline(username)));
++            }
++        }
++
+         let credentials = Self::get_active(exec).await?;
+ 
+         if let Some(mut creds) = credentials {
+@@ -406,6 +419,42 @@ impl Credentials {
+         }
+     }
+ 
++    /// Creates fake offline credentials for use when bypassing Microsoft authentication.
++    /// The UUID is generated deterministically from the username, similar to Minecraft's
++    /// offline player UUID generation (using SHA-256 truncated to 16 bytes with UUID v4 markers).
++    pub fn offline(username: String) -> Self {
++        // Generate a deterministic UUID from the username
++        // We use SHA-256 and take the first 16 bytes, then set UUID version/variant bits
++        let offline_uuid = {
++            let hash = sha2::Sha256::digest(
++                format!("OfflinePlayer:{}", username).as_bytes(),
++            );
++            let mut bytes = [0u8; 16];
++            bytes.copy_from_slice(&hash[..16]);
++            // Set version to 4 (random) - this is cosmetic but makes it a valid UUID
++            bytes[6] = (bytes[6] & 0x0f) | 0x40;
++            // Set variant to RFC 4122
++            bytes[8] = (bytes[8] & 0x3f) | 0x80;
++            Uuid::from_bytes(bytes)
++        };
++
++        Self {
++            offline_profile: MinecraftProfile {
++                id: offline_uuid,
++                name: username,
++                skins: Vec::new(),
++                capes: Vec::new(),
++                fetch_time: None,
++            },
++            // Use a dummy token - offline mode servers don't validate it
++            access_token: "offline_mode_token".to_string(),
++            refresh_token: String::new(),
++            // Set expiry far in the future so it never tries to refresh
++            expires: Utc::now() + Duration::days(365 * 100),
++            active: true,
++        }
++    }
++
+     /// Fetches the currently selected credentials from the database, attempting
+     /// to refresh them if they are expired.
+     pub async fn get_active(
