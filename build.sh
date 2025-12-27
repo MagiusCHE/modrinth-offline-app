@@ -102,8 +102,73 @@ if command -v pkg-config &> /dev/null; then
     echo ""
     echo "--- Checking Tauri/GTK development libraries ---"
 
+    # GLib 2.0 / GIO dependencies (required for glib-2.0 and gio-2.0 to work properly)
+    check_pkg_config "libffi" "sudo pacman -S libffi  OR  sudo apt install libffi-dev"
+    check_pkg_config "zlib" "sudo pacman -S zlib  OR  sudo apt install zlib1g-dev"
+    check_pkg_config "mount" "sudo pacman -S util-linux-libs  OR  sudo apt install libmount-dev"
+    check_pkg_config "sysprof-capture-4" "sudo pacman -S libsysprof-capture  OR  sudo apt install libsysprof-4-dev"
+    check_pkg_config "libpcre2-8" "sudo pacman -S pcre2  OR  sudo apt install libpcre2-dev"
+
+    # Compression libraries
+    check_pkg_config "libbz2" "sudo pacman -S bzip2  OR  sudo apt install libbz2-dev"
+    check_pkg_config "libpng" "sudo pacman -S libpng  OR  sudo apt install libpng-dev"
+    check_pkg_config "libbrotlidec" "sudo pacman -S brotli  OR  sudo apt install libbrotli-dev"
+    check_pkg_config "liblzma" "sudo pacman -S xz  OR  sudo apt install liblzma-dev"
+    check_pkg_config "libzstd" "sudo pacman -S zstd  OR  sudo apt install libzstd-dev"
+
+    # Text rendering dependencies (required by pango/gtk)
+    check_pkg_config "harfbuzz" "sudo pacman -S harfbuzz  OR  sudo apt install libharfbuzz-dev"
+    check_pkg_config "freetype2" "sudo pacman -S freetype2  OR  sudo apt install libfreetype-dev"
+    check_pkg_config "fontconfig" "sudo pacman -S fontconfig  OR  sudo apt install libfontconfig-dev"
+    check_pkg_config "fribidi" "sudo pacman -S fribidi  OR  sudo apt install libfribidi-dev"
+    check_pkg_config "graphite2" "sudo pacman -S graphite  OR  sudo apt install libgraphite2-dev"
+    check_pkg_config "expat" "sudo pacman -S expat  OR  sudo apt install libexpat1-dev"
+    check_pkg_config "libthai" "sudo pacman -S libthai  OR  sudo apt install libthai-dev"
+    check_pkg_config "datrie-0.2" "sudo pacman -S libdatrie  OR  sudo apt install libdatrie-dev"
+
+    # Cairo dependencies
+    check_pkg_config "pixman-1" "sudo pacman -S pixman  OR  sudo apt install libpixman-1-dev"
+    check_pkg_config "libjpeg" "sudo pacman -S libjpeg-turbo  OR  sudo apt install libjpeg-dev"
+    check_pkg_config "libtiff-4" "sudo pacman -S libtiff  OR  sudo apt install libtiff-dev"
+
+    # Cairo and Pango
+    check_pkg_config "cairo" "sudo pacman -S cairo  OR  sudo apt install libcairo2-dev"
+    check_pkg_config "pango" "sudo pacman -S pango  OR  sudo apt install libpango1.0-dev"
+
+    # X11 dependencies (for GTK X11 backend)
+    check_pkg_config "x11" "sudo pacman -S libx11  OR  sudo apt install libx11-dev"
+    check_pkg_config "xext" "sudo pacman -S libxext  OR  sudo apt install libxext-dev"
+    check_pkg_config "xrender" "sudo pacman -S libxrender  OR  sudo apt install libxrender-dev"
+    check_pkg_config "xcb" "sudo pacman -S libxcb  OR  sudo apt install libxcb1-dev"
+    check_pkg_config "xau" "sudo pacman -S libxau  OR  sudo apt install libxau-dev"
+    check_pkg_config "xdmcp" "sudo pacman -S libxdmcp  OR  sudo apt install libxdmcp-dev"
+    check_pkg_config "xi" "sudo pacman -S libxi  OR  sudo apt install libxi-dev"
+    check_pkg_config "xrandr" "sudo pacman -S libxrandr  OR  sudo apt install libxrandr-dev"
+    check_pkg_config "xcursor" "sudo pacman -S libxcursor  OR  sudo apt install libxcursor-dev"
+    check_pkg_config "xfixes" "sudo pacman -S libxfixes  OR  sudo apt install libxfixes-dev"
+    check_pkg_config "xcomposite" "sudo pacman -S libxcomposite  OR  sudo apt install libxcomposite-dev"
+    check_pkg_config "xdamage" "sudo pacman -S libxdamage  OR  sudo apt install libxdamage-dev"
+    check_pkg_config "xinerama" "sudo pacman -S libxinerama  OR  sudo apt install libxinerama-dev"
+    check_pkg_config "xft" "sudo pacman -S libxft  OR  sudo apt install libxft-dev"
+
+    # Wayland dependencies (for GTK Wayland backend)
+    check_pkg_config "wayland-client" "sudo pacman -S wayland  OR  sudo apt install libwayland-dev"
+    check_pkg_config "xkbcommon" "sudo pacman -S libxkbcommon  OR  sudo apt install libxkbcommon-dev"
+
+    # OpenGL/EGL dependencies
+    check_pkg_config "epoxy" "sudo pacman -S libepoxy  OR  sudo apt install libepoxy-dev"
+    check_pkg_config "egl" "sudo pacman -S libglvnd  OR  sudo apt install libegl1-mesa-dev"
+    check_pkg_config "gl" "sudo pacman -S mesa  OR  sudo apt install libgl1-mesa-dev"
+
     # GLib 2.0
     check_pkg_config "glib-2.0" "sudo pacman -S glib2  OR  sudo apt install libglib2.0-dev"
+
+    # ATK
+    check_pkg_config "atk" "sudo pacman -S atk  OR  sudo apt install libatk1.0-dev"
+
+    # GDK Pixbuf
+    check_pkg_config "gdk-pixbuf-2.0" "sudo pacman -S gdk-pixbuf2  OR  sudo apt install libgdk-pixbuf2.0-dev"
+    check_pkg_config "shared-mime-info" "sudo pacman -S shared-mime-info  OR  sudo apt install shared-mime-info"
 
     # GTK 3
     check_pkg_config "gtk+-3.0" "sudo pacman -S gtk3  OR  sudo apt install libgtk-3-dev"
@@ -237,6 +302,12 @@ if [ "$BUILD_MODRINTH" = true ]; then
     # Build frontend and Rust backend
     echo "Building app..."
     cd apps/app
+
+    # Ensure PKG_CONFIG_PATH is set for Cargo build
+    export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    unset PKG_CONFIG_LIBDIR
+    echo "PKG_CONFIG_PATH for build: $PKG_CONFIG_PATH"
+
     pnpm tauri build --bundles appimage 2>&1 || true
 
     # Check if AppDir was created
