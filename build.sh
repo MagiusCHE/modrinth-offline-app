@@ -45,10 +45,8 @@ if [ -n "$DETECTED_PKG_PATHS" ]; then
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
 fi
 
-# Also set PKG_CONFIG_LIBDIR as fallback (some systems need this)
-if [ -z "$PKG_CONFIG_LIBDIR" ]; then
-    export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
-fi
+# Unset PKG_CONFIG_LIBDIR if set, as it overrides PKG_CONFIG_PATH
+unset PKG_CONFIG_LIBDIR
 
 # =============================================================================
 # Dependency Check
