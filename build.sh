@@ -126,21 +126,31 @@ check_command "cc" "base-devel" "build-essential"
 check_command "pkg-config" "pkgconf" "pkg-config"
 
 # Function to check if a pkg-config library exists (and auto-install if possible)
+# $4 = "optional" to make it non-blocking
 check_pkg_config() {
     local lib="$1"
     local pacman_pkg="$2"
     local apt_pkg="$3"
+    local optional="$4"
 
     if pkg-config --exists "$lib" 2>/dev/null; then
         echo "[OK] $lib found (pkg-config)"
         return 0
     else
+        if [ "$optional" = "optional" ]; then
+            echo "[SKIP] $lib not found (optional, some packages don't provide .pc files)"
+            return 0
+        fi
         echo "[MISSING] $lib development library not found"
         if [ "$HAS_PACMAN" = true ] || [ "$HAS_APT" = true ]; then
             if auto_install_pkg "$pacman_pkg" "$apt_pkg"; then
                 # Re-check after installation
                 if pkg-config --exists "$lib" 2>/dev/null; then
                     echo "[INSTALLED] $lib"
+                    return 0
+                else
+                    # Package installed but no .pc file - that's ok for some packages
+                    echo "[WARN] $pacman_pkg installed but $lib.pc not found (may be ok)"
                     return 0
                 fi
             fi
@@ -163,8 +173,8 @@ if command -v pkg-config &> /dev/null; then
     check_pkg_config "sysprof-capture-4" "libsysprof-capture" "libsysprof-4-dev"
     check_pkg_config "libpcre2-8" "pcre2" "libpcre2-dev"
 
-    # Compression libraries
-    check_pkg_config "libbz2" "bzip2" "libbz2-dev"
+    # Compression libraries (some don't have .pc files on Arch, mark as optional)
+    check_pkg_config "libbz2" "bzip2" "libbz2-dev" "optional"
     check_pkg_config "libpng" "libpng" "libpng-dev"
     check_pkg_config "libbrotlidec" "brotli" "libbrotli-dev"
     check_pkg_config "liblzma" "xz" "liblzma-dev"
@@ -180,9 +190,9 @@ if command -v pkg-config &> /dev/null; then
     check_pkg_config "libthai" "libthai" "libthai-dev"
     check_pkg_config "datrie-0.2" "libdatrie" "libdatrie-dev"
 
-    # Cairo dependencies
+    # Cairo dependencies (libjpeg often doesn't have .pc on Arch)
     check_pkg_config "pixman-1" "pixman" "libpixman-1-dev"
-    check_pkg_config "libjpeg" "libjpeg-turbo" "libjpeg-dev"
+    check_pkg_config "libjpeg" "libjpeg-turbo" "libjpeg-dev" "optional"
     check_pkg_config "libtiff-4" "libtiff" "libtiff-dev"
 
     # Cairo and Pango
