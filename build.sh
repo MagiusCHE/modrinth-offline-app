@@ -12,6 +12,71 @@ echo "=== Modrinth Build Script ==="
 echo "Script directory: $SCRIPT_DIR"
 echo "Dist directory: $DIST_DIR"
 
+# =============================================================================
+# Dependency Check
+# =============================================================================
+echo ""
+echo "=== Checking dependencies ==="
+
+MISSING_DEPS=false
+
+# Function to check if a command exists
+check_command() {
+    local cmd="$1"
+    local install_hint="$2"
+
+    if command -v "$cmd" &> /dev/null; then
+        echo "[OK] $cmd found: $(command -v "$cmd")"
+        return 0
+    else
+        echo "[MISSING] $cmd not found"
+        echo "    Install with: $install_hint"
+        MISSING_DEPS=true
+        return 1
+    fi
+}
+
+# Check git
+check_command "git" "sudo pacman -S git  OR  sudo apt install git"
+
+# Check Rust/Cargo
+check_command "cargo" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+
+# Check Node.js/npm
+check_command "npm" "
+    # Using nvm (recommended):
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    source ~/.bashrc
+    nvm install --lts
+
+    # Or using package manager:
+    sudo pacman -S nodejs npm  OR  sudo apt install nodejs npm"
+
+# Check pnpm
+check_command "pnpm" "npm install -g pnpm  OR  curl -fsSL https://get.pnpm.io/install.sh | sh -"
+
+# Check appimagetool
+check_command "appimagetool" "
+    # Download from: https://github.com/AppImage/appimagetool/releases
+    wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+    chmod +x appimagetool-x86_64.AppImage
+    sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool"
+
+# Exit if any dependencies are missing
+if [ "$MISSING_DEPS" = true ]; then
+    echo ""
+    echo "ERROR: Missing dependencies. Please install them and try again."
+    echo "After installing, you may need to restart your terminal or run: source ~/.bashrc"
+    exit 1
+fi
+
+echo ""
+echo "All dependencies found!"
+
+# =============================================================================
+# Build Process
+# =============================================================================
+
 # 1. Clone repositories or update if they exist
 mkdir -p "$DIST_DIR"
 mkdir -p "$SRC_BASE_DIR"
