@@ -423,8 +423,8 @@ WRAPPER_EOF
     unset PKG_CONFIG_SYSROOT_DIR
 
     # Set target-specific variables that Cargo's pkg-config crate looks for
+    # Note: bash doesn't allow hyphens in variable names, so we only set the underscore version
     export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="$PKG_CONFIG_PATH"
-    export PKG_CONFIG_PATH_x86_64-unknown-linux-gnu="$PKG_CONFIG_PATH"
     export HOST_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
 
     # Tell Cargo to use our wrapper instead of system pkg-config
