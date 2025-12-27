@@ -13,6 +13,36 @@ echo "Script directory: $SCRIPT_DIR"
 echo "Dist directory: $DIST_DIR"
 
 # =============================================================================
+# PKG_CONFIG_PATH Setup (for Steam Deck and other non-standard setups)
+# =============================================================================
+# Auto-detect common pkg-config paths if PKG_CONFIG_PATH is not set
+if [ -z "$PKG_CONFIG_PATH" ]; then
+    DETECTED_PKG_PATHS=""
+
+    # Common locations for .pc files
+    for pc_dir in \
+        "/usr/lib/pkgconfig" \
+        "/usr/lib64/pkgconfig" \
+        "/usr/share/pkgconfig" \
+        "/usr/lib/x86_64-linux-gnu/pkgconfig" \
+        "/usr/local/lib/pkgconfig" \
+        "/usr/local/lib64/pkgconfig"; do
+        if [ -d "$pc_dir" ]; then
+            if [ -n "$DETECTED_PKG_PATHS" ]; then
+                DETECTED_PKG_PATHS="$DETECTED_PKG_PATHS:$pc_dir"
+            else
+                DETECTED_PKG_PATHS="$pc_dir"
+            fi
+        fi
+    done
+
+    if [ -n "$DETECTED_PKG_PATHS" ]; then
+        export PKG_CONFIG_PATH="$DETECTED_PKG_PATHS"
+        echo "Auto-configured PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+    fi
+fi
+
+# =============================================================================
 # Dependency Check
 # =============================================================================
 echo ""
@@ -38,6 +68,51 @@ check_command() {
 
 # Check git
 check_command "git" "sudo pacman -S git  OR  sudo apt install git"
+
+# Check C compiler/linker (cc)
+check_command "cc" "sudo pacman -S base-devel  OR  sudo apt install build-essential"
+
+# Check pkg-config
+check_command "pkg-config" "sudo pacman -S pkgconf  OR  sudo apt install pkg-config"
+
+# Function to check if a pkg-config library exists
+check_pkg_config() {
+    local lib="$1"
+    local install_hint="$2"
+
+    if pkg-config --exists "$lib" 2>/dev/null; then
+        echo "[OK] $lib found (pkg-config)"
+        return 0
+    else
+        echo "[MISSING] $lib development library not found"
+        echo "    Install with: $install_hint"
+        MISSING_DEPS=true
+        return 1
+    fi
+}
+
+# Check GTK/Tauri dependencies (only if pkg-config is available)
+if command -v pkg-config &> /dev/null; then
+    echo ""
+    echo "--- Checking Tauri/GTK development libraries ---"
+
+    # GLib 2.0
+    check_pkg_config "glib-2.0" "sudo pacman -S glib2  OR  sudo apt install libglib2.0-dev"
+
+    # GTK 3
+    check_pkg_config "gtk+-3.0" "sudo pacman -S gtk3  OR  sudo apt install libgtk-3-dev"
+
+    # WebKit2GTK
+    check_pkg_config "webkit2gtk-4.1" "sudo pacman -S webkit2gtk-4.1  OR  sudo apt install libwebkit2gtk-4.1-dev"
+
+    # libsoup (HTTP library for WebKit)
+    check_pkg_config "libsoup-3.0" "sudo pacman -S libsoup3  OR  sudo apt install libsoup-3.0-dev"
+
+    # OpenSSL
+    check_pkg_config "openssl" "sudo pacman -S openssl  OR  sudo apt install libssl-dev"
+
+    echo ""
+fi
 
 # Check Rust/Cargo
 check_command "cargo" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
