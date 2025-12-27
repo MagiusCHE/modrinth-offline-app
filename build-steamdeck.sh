@@ -401,6 +401,18 @@ if [ "$BUILD_MODRINTH" = true ]; then
     echo "Building app..."
     cd apps/app
 
+    # Set Java 17 for the build (Gradle requires JVM 17+)
+    # This only affects this build, doesn't change system default
+    if [ -d "/usr/lib/jvm/java-17-openjdk" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        echo "Using Java 17 for build: $JAVA_HOME"
+        java -version
+    else
+        echo "WARNING: Java 17 not found. Gradle may fail."
+        echo "Install with: sudo pacman -S jdk17-openjdk"
+    fi
+
     # Create a wrapper script for pkg-config that forces the correct path
     # This ensures pkg-config always uses our paths regardless of how it's called
     PKG_CONFIG_WRAPPER="$MODRINTH_DIR/pkg-config-wrapper.sh"
