@@ -8,9 +8,28 @@ SRC_BASE_DIR="$SCRIPT_DIR/src"
 MODRINTH_DIR="$SRC_BASE_DIR/modrinth-core"
 SPM_DIR="$SRC_BASE_DIR/simple-profiles-manager"
 
-echo "=== Modrinth Build Script ==="
+echo "=== Modrinth Build Script (Steam Deck) ==="
 echo "Script directory: $SCRIPT_DIR"
 echo "Dist directory: $DIST_DIR"
+
+# =============================================================================
+# Steam Deck Read-Only Filesystem Check
+# =============================================================================
+# Check if we're on Steam Deck and filesystem is read-only
+if [ -f "/etc/os-release" ] && grep -q "SteamOS" /etc/os-release; then
+    echo ""
+    echo "--- Steam Deck detected ---"
+
+    # Test if filesystem is read-only by trying to touch a file in /usr
+    if ! touch /usr/.writetest 2>/dev/null; then
+        echo "Filesystem is read-only. Disabling read-only mode..."
+        sudo steamos-readonly disable
+        echo "Read-only mode disabled."
+    else
+        rm -f /usr/.writetest
+        echo "Filesystem is writable."
+    fi
+fi
 
 # =============================================================================
 # PKG_CONFIG_PATH Setup (for Steam Deck and other non-standard setups)
