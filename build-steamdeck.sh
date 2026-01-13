@@ -29,6 +29,18 @@ if [ -f "/etc/os-release" ] && grep -q "SteamOS" /etc/os-release; then
         rm -f /usr/.writetest
         echo "Filesystem is writable."
     fi
+
+    # Check if pacman keyring is initialized
+    if ! pacman-key --list-keys &>/dev/null; then
+        echo ""
+        echo "Pacman keyring not initialized. Initializing..."
+        sudo pacman-key --init
+        sudo pacman-key --populate archlinux
+        sudo pacman-key --populate holo
+        echo "Pacman keyring initialized."
+    else
+        echo "Pacman keyring is ready."
+    fi
 fi
 
 # =============================================================================
