@@ -434,15 +434,18 @@ if [ "$BUILD_MODRINTH" = true ]; then
 
     # Set Java 17 for the build (Gradle requires JVM 17+)
     # This only affects this build, doesn't change system default
-    if [ -d "/usr/lib/jvm/java-17-openjdk" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
-        export PATH="$JAVA_HOME/bin:$PATH"
-        echo "Using Java 17 for build: $JAVA_HOME"
-        java -version
-    else
-        echo "WARNING: Java 17 not found. Gradle may fail."
-        echo "Install with: sudo pacman -S jdk17-openjdk"
+    if [ ! -d "/usr/lib/jvm/java-17-openjdk" ]; then
+        echo "Java 17 not found. Installing..."
+        sudo pacman -S --noconfirm --needed jdk17-openjdk
     fi
+    export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    echo "Using Java 17 for build: $JAVA_HOME"
+    java -version
+
+    # Ensure gtk3 and its dependencies are installed
+    echo "Ensuring GTK3 dependencies are installed..."
+    sudo pacman -S --noconfirm --needed gtk3 libxtst dbus systemd-libs
 
     # Create a wrapper script for pkg-config that forces the correct path
     # This ensures pkg-config always uses our paths regardless of how it's called
