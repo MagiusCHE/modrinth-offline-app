@@ -499,7 +499,9 @@ if [ "$BUILD_MODRINTH" = true ]; then
             libxcb libxau libxdmcp libxi libxrandr libxcursor \
             libxfixes libxcomposite libxdamage libxinerama libxft \
             zlib pcre2 expat libthai libdatrie libjpeg-turbo libtiff \
-            xz zstd brotli libsysprof-capture libffi util-linux-libs
+            xz zstd brotli libsysprof-capture libffi util-linux-libs \
+            bzip2 graphite xorgproto shared-mime-info libcloudproviders \
+            linux-api-headers
         echo "Dependencies reinstalled."
     else
         echo "All pkg-config files are present."
