@@ -428,9 +428,9 @@ export PATH="$JAVA_HOME/bin:$PATH"
 echo "Using Java 17 for build: $JAVA_HOME"
 java -version
 
-# Ensure gcc and glibc are properly installed for C compilation
+# Ensure gcc, glibc and linux headers are properly installed for C compilation
 echo "Ensuring C compiler dependencies..."
-sudo pacman -S --noconfirm --overwrite '*' gcc glibc
+sudo pacman -S --noconfirm --overwrite '*' gcc glibc linux-api-headers
 
 # Set PKG_CONFIG environment variables
 export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
