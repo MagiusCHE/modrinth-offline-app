@@ -443,25 +443,12 @@ if [ "$BUILD_MODRINTH" = true ]; then
     echo "Using Java 17 for build: $JAVA_HOME"
     java -version
 
-    # Ensure gtk3 and its dependencies are installed
-    echo "Ensuring GTK3 dependencies are installed..."
-    sudo pacman -S --noconfirm --needed gtk3 libxtst dbus systemd-libs
+    # Ensure gtk3 and its dependencies are installed with .pc files
+    # On Steam Deck, .pc files may be removed during system updates, so we use --overwrite
+    echo "Ensuring GTK3 dependencies are installed (with pkg-config files)..."
+    sudo pacman -S --noconfirm --overwrite '*' gtk3 pango gdk-pixbuf2 cairo glib2 atk harfbuzz freetype2 fontconfig fribidi pixman libpng libxtst dbus systemd-libs
 
-    # Create a wrapper script for pkg-config that forces the correct path
-    # This ensures pkg-config always uses our paths regardless of how it's called
-    PKG_CONFIG_WRAPPER="$MODRINTH_DIR/pkg-config-wrapper.sh"
-    cat > "$PKG_CONFIG_WRAPPER" << 'WRAPPER_EOF'
-#!/bin/bash
-export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
-export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
-export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
-unset PKG_CONFIG_LIBDIR
-unset PKG_CONFIG_SYSROOT_DIR
-exec /usr/bin/pkg-config "$@"
-WRAPPER_EOF
-    chmod +x "$PKG_CONFIG_WRAPPER"
-
-    # Set all PKG_CONFIG environment variables
+    # Set all PKG_CONFIG environment variables directly
     export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
     export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
     export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
@@ -469,29 +456,23 @@ WRAPPER_EOF
     unset PKG_CONFIG_SYSROOT_DIR
 
     # Set target-specific variables that Cargo's pkg-config crate looks for
-    # Note: bash doesn't allow hyphens in variable names, so we only set the underscore version
     export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="$PKG_CONFIG_PATH"
     export HOST_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
 
-    # Tell Cargo to use our wrapper instead of system pkg-config
-    export PKG_CONFIG="$PKG_CONFIG_WRAPPER"
-
     echo "PKG_CONFIG_PATH for build: $PKG_CONFIG_PATH"
-    echo "PKG_CONFIG wrapper: $PKG_CONFIG"
 
     # Verify gtk+-3.0 is findable before building
-    if ! "$PKG_CONFIG_WRAPPER" --exists gtk+-3.0; then
-        echo "ERROR: gtk+-3.0 still not found by pkg-config wrapper. Check installation."
+    if ! pkg-config --exists gtk+-3.0; then
+        echo "ERROR: gtk+-3.0 still not found by pkg-config. Check installation."
         exit 1
     fi
-    echo "gtk+-3.0 verification: $("$PKG_CONFIG_WRAPPER" --modversion gtk+-3.0)"
-    echo "gtk+-3.0 cflags: $("$PKG_CONFIG_WRAPPER" --cflags gtk+-3.0 | head -c 100)..."
+    echo "gtk+-3.0 verification: $(pkg-config --modversion gtk+-3.0)"
 
-    # Run build with wrapper
+    # Run build with env vars explicitly passed
+    PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
+    PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 \
+    PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 \
     pnpm tauri build --bundles appimage 2>&1 || true
-
-    # Cleanup wrapper
-    rm -f "$PKG_CONFIG_WRAPPER"
 
     # Check if AppDir was created
     APPDIR="$MODRINTH_DIR/target/release/bundle/appimage/Modrinth App.AppDir"
