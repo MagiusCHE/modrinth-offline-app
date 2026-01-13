@@ -443,27 +443,70 @@ if [ "$BUILD_MODRINTH" = true ]; then
     echo "Using Java 17 for build: $JAVA_HOME"
     java -version
 
-    # Ensure gtk3 and its dependencies are installed with .pc files
-    # On Steam Deck, .pc files may be removed during system updates, so we use --overwrite
-    echo "Ensuring GTK3 dependencies are installed (with pkg-config files)..."
-    sudo pacman -S --noconfirm --overwrite '*' gtk3 pango gdk-pixbuf2 cairo glib2 atk harfbuzz freetype2 fontconfig fribidi pixman libpng libxtst dbus systemd-libs
-
-    # Set all PKG_CONFIG environment variables directly
+    # Set PKG_CONFIG environment variables
     export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
     export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
     export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
     unset PKG_CONFIG_LIBDIR
     unset PKG_CONFIG_SYSROOT_DIR
-
-    # Set target-specific variables that Cargo's pkg-config crate looks for
     export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="$PKG_CONFIG_PATH"
     export HOST_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
 
+    # On Steam Deck, .pc files may be removed during system updates
+    # Check if critical .pc files exist, if not reinstall all dependencies
+    echo "Checking pkg-config files..."
+    NEED_REINSTALL=false
+
+    # List of critical .pc files that must exist
+    CRITICAL_PC_FILES=(
+        "gtk+-3.0"
+        "glib-2.0"
+        "gobject-2.0"
+        "gio-2.0"
+        "gdk-3.0"
+        "pango"
+        "pangocairo"
+        "cairo"
+        "cairo-gobject"
+        "gdk-pixbuf-2.0"
+        "atk"
+        "harfbuzz"
+        "freetype2"
+        "fontconfig"
+        "libsoup-3.0"
+        "webkit2gtk-4.1"
+    )
+
+    for pc in "${CRITICAL_PC_FILES[@]}"; do
+        if ! pkg-config --exists "$pc" 2>/dev/null; then
+            echo "  [MISSING] $pc.pc"
+            NEED_REINSTALL=true
+        fi
+    done
+
+    if [ "$NEED_REINSTALL" = true ]; then
+        echo ""
+        echo "Some pkg-config files are missing. Reinstalling all GTK dependencies..."
+        sudo pacman -S --noconfirm --overwrite '*' \
+            gtk3 glib2 pango cairo gdk-pixbuf2 atk at-spi2-core \
+            harfbuzz freetype2 fontconfig fribidi pixman libpng \
+            libxtst dbus systemd-libs libxkbcommon wayland \
+            libepoxy mesa libglvnd libsoup3 webkit2gtk-4.1 \
+            sqlite libpsl libnghttp2 libx11 libxext libxrender \
+            libxcb libxau libxdmcp libxi libxrandr libxcursor \
+            libxfixes libxcomposite libxdamage libxinerama libxft \
+            zlib pcre2 expat libthai libdatrie libjpeg-turbo libtiff \
+            xz zstd brotli
+        echo "Dependencies reinstalled."
+    else
+        echo "All pkg-config files are present."
+    fi
+
     echo "PKG_CONFIG_PATH for build: $PKG_CONFIG_PATH"
 
-    # Verify gtk+-3.0 is findable before building
+    # Final verification
     if ! pkg-config --exists gtk+-3.0; then
-        echo "ERROR: gtk+-3.0 still not found by pkg-config. Check installation."
+        echo "ERROR: gtk+-3.0 still not found by pkg-config after reinstall. Check installation."
         exit 1
     fi
     echo "gtk+-3.0 verification: $(pkg-config --modversion gtk+-3.0)"
