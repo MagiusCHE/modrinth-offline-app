@@ -385,203 +385,177 @@ else
     git clone https://github.com/MagiusCHE/simple-profiles-manager "$SPM_DIR"
 fi
 
-# 2. Check if Modrinth AppImage already exists
-BUILD_MODRINTH=true
-EXISTING_APPIMAGE=$(ls "$DIST_DIR"/Modrinth_App_*.AppImage 2>/dev/null | head -1)
-if [ -n "$EXISTING_APPIMAGE" ]; then
-    echo ""
-    echo "Modrinth AppImage already exists: $(basename "$EXISTING_APPIMAGE")"
-    echo "Do you want to rebuild it? (y/n)"
-    read -r response
-    if [ "$response" != "y" ]; then
-        BUILD_MODRINTH=false
-        echo "Skipping Modrinth build..."
-    fi
+# 2. Build Modrinth App (always rebuild)
+echo ""
+echo "=== Step 2: Apply patch ==="
+cd "$MODRINTH_DIR"
+if git apply --check "$SCRIPT_DIR/tools/patch_01.patch" 2>/dev/null; then
+    git apply "$SCRIPT_DIR/tools/patch_01.patch"
+    echo "Patch applied successfully!"
+else
+    echo "Patch already applied or not applicable, continuing..."
 fi
 
-if [ "$BUILD_MODRINTH" = true ]; then
-    # 2a. Apply patch
+# 3. Build AppImage
+echo ""
+echo "=== Step 3: Build AppImage ==="
+cd "$MODRINTH_DIR"
+
+# Clean build cache to avoid stale paths
+echo "Cleaning build cache..."
+cargo clean 2>/dev/null || true
+
+# Copy .env.prod to .env for build variables
+echo "Configuring production environment..."
+cp packages/app-lib/.env.prod packages/app-lib/.env
+
+# Install dependencies
+echo "Installing pnpm dependencies..."
+pnpm install
+
+# Build frontend and Rust backend
+echo "Building app..."
+cd apps/app
+
+# Set Java 17 for the build (Gradle requires JVM 17+)
+# This only affects this build, doesn't change system default
+if [ ! -d "/usr/lib/jvm/java-17-openjdk" ]; then
+    echo "Java 17 not found. Installing..."
+    sudo pacman -S --noconfirm --needed jdk17-openjdk
+fi
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
+export PATH="$JAVA_HOME/bin:$PATH"
+echo "Using Java 17 for build: $JAVA_HOME"
+java -version
+
+# Ensure gcc and glibc are properly installed for C compilation
+echo "Ensuring C compiler dependencies..."
+sudo pacman -S --noconfirm --overwrite '*' gcc glibc
+
+# Set PKG_CONFIG environment variables
+export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
+export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
+export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
+unset PKG_CONFIG_LIBDIR
+unset PKG_CONFIG_SYSROOT_DIR
+export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="$PKG_CONFIG_PATH"
+export HOST_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+
+# On Steam Deck, .pc files may be removed during system updates
+# Check if critical .pc files exist, if not reinstall all dependencies
+echo "Checking pkg-config files..."
+NEED_REINSTALL=false
+
+# List of critical .pc files that must exist
+CRITICAL_PC_FILES=(
+    "gtk+-3.0"
+    "glib-2.0"
+    "gobject-2.0"
+    "gio-2.0"
+    "gdk-3.0"
+    "pango"
+    "pangocairo"
+    "cairo"
+    "cairo-gobject"
+    "gdk-pixbuf-2.0"
+    "atk"
+    "harfbuzz"
+    "freetype2"
+    "fontconfig"
+    "libsoup-3.0"
+    "webkit2gtk-4.1"
+    "sysprof-capture-4"
+    "libffi"
+    "mount"
+)
+
+for pc in "${CRITICAL_PC_FILES[@]}"; do
+    if ! pkg-config --exists "$pc" 2>/dev/null; then
+        echo "  [MISSING] $pc.pc"
+        NEED_REINSTALL=true
+    fi
+done
+
+if [ "$NEED_REINSTALL" = true ]; then
     echo ""
-    echo "=== Step 2: Apply patch ==="
-    cd "$MODRINTH_DIR"
-    if git apply --check "$SCRIPT_DIR/tools/patch_01.patch" 2>/dev/null; then
-        git apply "$SCRIPT_DIR/tools/patch_01.patch"
-        echo "Patch applied successfully!"
-    else
-        echo "Patch already applied or not applicable, continuing..."
-    fi
-
-    # 3. Build AppImage
-    echo ""
-    echo "=== Step 3: Build AppImage ==="
-    cd "$MODRINTH_DIR"
-
-    # Clean build cache to avoid stale paths
-    echo "Cleaning build cache..."
-    cargo clean 2>/dev/null || true
-
-    # Copy .env.prod to .env for build variables
-    echo "Configuring production environment..."
-    cp packages/app-lib/.env.prod packages/app-lib/.env
-
-    # Install dependencies
-    echo "Installing pnpm dependencies..."
-    pnpm install
-
-    # Build frontend and Rust backend
-    echo "Building app..."
-    cd apps/app
-
-    # Set Java 17 for the build (Gradle requires JVM 17+)
-    # This only affects this build, doesn't change system default
-    if [ ! -d "/usr/lib/jvm/java-17-openjdk" ]; then
-        echo "Java 17 not found. Installing..."
-        sudo pacman -S --noconfirm --needed jdk17-openjdk
-    fi
-    export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
-    export PATH="$JAVA_HOME/bin:$PATH"
-    echo "Using Java 17 for build: $JAVA_HOME"
-    java -version
-
-    # Set PKG_CONFIG environment variables
-    export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib64/pkgconfig"
-    export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
-    export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
-    unset PKG_CONFIG_LIBDIR
-    unset PKG_CONFIG_SYSROOT_DIR
-    export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="$PKG_CONFIG_PATH"
-    export HOST_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
-
-    # On Steam Deck, .pc files may be removed during system updates
-    # Check if critical .pc files exist, if not reinstall all dependencies
-    echo "Checking pkg-config files..."
-    NEED_REINSTALL=false
-
-    # List of critical .pc files that must exist
-    CRITICAL_PC_FILES=(
-        "gtk+-3.0"
-        "glib-2.0"
-        "gobject-2.0"
-        "gio-2.0"
-        "gdk-3.0"
-        "pango"
-        "pangocairo"
-        "cairo"
-        "cairo-gobject"
-        "gdk-pixbuf-2.0"
-        "atk"
-        "harfbuzz"
-        "freetype2"
-        "fontconfig"
-        "libsoup-3.0"
-        "webkit2gtk-4.1"
-        "sysprof-capture-4"
-        "libffi"
-        "mount"
-    )
-
-    for pc in "${CRITICAL_PC_FILES[@]}"; do
-        if ! pkg-config --exists "$pc" 2>/dev/null; then
-            echo "  [MISSING] $pc.pc"
-            NEED_REINSTALL=true
-        fi
-    done
-
-    if [ "$NEED_REINSTALL" = true ]; then
-        echo ""
-        echo "Some pkg-config files are missing. Reinstalling all GTK dependencies..."
-        sudo pacman -S --noconfirm --overwrite '*' \
-            gtk3 glib2 pango cairo gdk-pixbuf2 atk at-spi2-core \
-            harfbuzz freetype2 fontconfig fribidi pixman libpng \
-            libxtst dbus systemd-libs libxkbcommon wayland \
-            libepoxy mesa libglvnd libsoup3 webkit2gtk-4.1 \
-            sqlite libpsl libnghttp2 libx11 libxext libxrender \
-            libxcb libxau libxdmcp libxi libxrandr libxcursor \
-            libxfixes libxcomposite libxdamage libxinerama libxft \
-            zlib pcre2 expat libthai libdatrie libjpeg-turbo libtiff \
-            xz zstd brotli libsysprof-capture libffi util-linux-libs \
-            bzip2 graphite xorgproto shared-mime-info libcloudproviders \
-            linux-api-headers
-        echo "Dependencies reinstalled."
-    else
-        echo "All pkg-config files are present."
-    fi
-
-    echo "PKG_CONFIG_PATH for build: $PKG_CONFIG_PATH"
-
-    # Final verification
-    if ! pkg-config --exists gtk+-3.0; then
-        echo "ERROR: gtk+-3.0 still not found by pkg-config after reinstall. Check installation."
-        exit 1
-    fi
-    echo "gtk+-3.0 verification: $(pkg-config --modversion gtk+-3.0)"
-
-    # Run build with env vars explicitly passed
-    PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
-    PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 \
-    PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 \
-    pnpm tauri build --bundles appimage 2>&1 || true
-
-    # Check if AppDir was created
-    APPDIR="$MODRINTH_DIR/target/release/bundle/appimage/Modrinth App.AppDir"
-    if [ ! -d "$APPDIR" ]; then
-        echo "ERROR: AppDir not found. Build failed."
-        exit 1
-    fi
-
-    cd "$MODRINTH_DIR/target/release/bundle/appimage"
-
-    # Remove old AppImage if exists
-    rm -f *.AppImage
-
-    # Fix icon symlink (desktop file expects ModrinthApp.png)
-    if [ -f "Modrinth App.AppDir/Modrinth App.png" ] && [ ! -f "Modrinth App.AppDir/ModrinthApp.png" ]; then
-        cp "Modrinth App.AppDir/Modrinth App.png" "Modrinth App.AppDir/ModrinthApp.png"
-    fi
-
-    # Get the latest git tag for versioning
-    GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
-
-    # Create AppImage using system appimagetool
-    echo "Creating AppImage with appimagetool..."
-    ARCH=x86_64 appimagetool "Modrinth App.AppDir" "Modrinth_App_${GIT_TAG}_amd64.AppImage"
-
-    # Copy AppImage to dist directory
-    echo ""
-    echo "=== Copy Modrinth AppImage to dist ==="
-    rm -f "$DIST_DIR"/Modrinth_App_*.AppImage
-    cp *.AppImage "$DIST_DIR/"
+    echo "Some pkg-config files are missing. Reinstalling all GTK dependencies..."
+    sudo pacman -S --noconfirm --overwrite '*' \
+        gtk3 glib2 pango cairo gdk-pixbuf2 atk at-spi2-core \
+        harfbuzz freetype2 fontconfig fribidi pixman libpng \
+        libxtst dbus systemd-libs libxkbcommon wayland \
+        libepoxy mesa libglvnd libsoup3 webkit2gtk-4.1 \
+        sqlite libpsl libnghttp2 libx11 libxext libxrender \
+        libxcb libxau libxdmcp libxi libxrandr libxcursor \
+        libxfixes libxcomposite libxdamage libxinerama libxft \
+        zlib pcre2 expat libthai libdatrie libjpeg-turbo libtiff \
+        xz zstd brotli libsysprof-capture libffi util-linux-libs \
+        bzip2 graphite xorgproto shared-mime-info libcloudproviders \
+        linux-api-headers glibc gcc
+    echo "Dependencies reinstalled."
+else
+    echo "All pkg-config files are present."
 fi
 
-# 4. Check if Simple Profiles Manager binary already exists
-BUILD_SPM=true
-if [ -f "$DIST_DIR/simple-profiles-manager" ]; then
-    echo ""
-    echo "Simple Profiles Manager binary already exists."
-    echo "Do you want to rebuild it? (y/n)"
-    read -r response
-    if [ "$response" != "y" ]; then
-        BUILD_SPM=false
-        echo "Skipping Simple Profiles Manager build..."
-    fi
+echo "PKG_CONFIG_PATH for build: $PKG_CONFIG_PATH"
+
+# Final verification
+if ! pkg-config --exists gtk+-3.0; then
+    echo "ERROR: gtk+-3.0 still not found by pkg-config after reinstall. Check installation."
+    exit 1
+fi
+echo "gtk+-3.0 verification: $(pkg-config --modversion gtk+-3.0)"
+
+# Run build with env vars explicitly passed
+PKG_CONFIG_PATH="$PKG_CONFIG_PATH" \
+PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 \
+PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 \
+pnpm tauri build --bundles appimage 2>&1 || true
+
+# Check if AppDir was created
+APPDIR="$MODRINTH_DIR/target/release/bundle/appimage/Modrinth App.AppDir"
+if [ ! -d "$APPDIR" ]; then
+    echo "ERROR: AppDir not found. Build failed."
+    exit 1
 fi
 
-if [ "$BUILD_SPM" = true ]; then
-    echo ""
-    echo "=== Step 4: Build Simple Profiles Manager ==="
-    cd "$SPM_DIR"
+cd "$MODRINTH_DIR/target/release/bundle/appimage"
 
-    # Clean build cache to avoid stale paths
-    echo "Cleaning build cache..."
-    cargo clean 2>/dev/null || true
+# Remove old AppImage if exists
+rm -f *.AppImage
 
-    cargo build --release
-
-    # Copy binary to dist directory
-    echo ""
-    echo "=== Copy Simple Profiles Manager binary to dist ==="
-    cp target/release/simple-profiles-manager "$DIST_DIR/"
+# Fix icon symlink (desktop file expects ModrinthApp.png)
+if [ -f "Modrinth App.AppDir/Modrinth App.png" ] && [ ! -f "Modrinth App.AppDir/ModrinthApp.png" ]; then
+    cp "Modrinth App.AppDir/Modrinth App.png" "Modrinth App.AppDir/ModrinthApp.png"
 fi
+
+# Get the latest git tag for versioning
+GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+
+# Create AppImage using system appimagetool
+echo "Creating AppImage with appimagetool..."
+ARCH=x86_64 appimagetool "Modrinth App.AppDir" "Modrinth_App_${GIT_TAG}_amd64.AppImage"
+
+# Copy AppImage to dist directory
+echo ""
+echo "=== Copy Modrinth AppImage to dist ==="
+rm -f "$DIST_DIR"/Modrinth_App_*.AppImage
+cp *.AppImage "$DIST_DIR/"
+
+# 4. Build Simple Profiles Manager
+echo ""
+echo "=== Step 4: Build Simple Profiles Manager ==="
+cd "$SPM_DIR"
+
+# Clean build cache to avoid stale paths
+echo "Cleaning build cache..."
+cargo clean 2>/dev/null || true
+
+cargo build --release
+
+# Copy binary to dist directory
+echo ""
+echo "=== Copy Simple Profiles Manager binary to dist ==="
+cp target/release/simple-profiles-manager "$DIST_DIR/"
 
 echo ""
 echo "=== Build completed successfully! ==="
