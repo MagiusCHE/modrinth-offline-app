@@ -475,6 +475,9 @@ if [ "$BUILD_MODRINTH" = true ]; then
         "fontconfig"
         "libsoup-3.0"
         "webkit2gtk-4.1"
+        "sysprof-capture-4"
+        "libffi"
+        "mount"
     )
 
     for pc in "${CRITICAL_PC_FILES[@]}"; do
@@ -496,7 +499,7 @@ if [ "$BUILD_MODRINTH" = true ]; then
             libxcb libxau libxdmcp libxi libxrandr libxcursor \
             libxfixes libxcomposite libxdamage libxinerama libxft \
             zlib pcre2 expat libthai libdatrie libjpeg-turbo libtiff \
-            xz zstd brotli
+            xz zstd brotli libsysprof-capture libffi util-linux-libs
         echo "Dependencies reinstalled."
     else
         echo "All pkg-config files are present."
