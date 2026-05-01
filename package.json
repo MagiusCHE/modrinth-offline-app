@@ -1,0 +1,24 @@
+{
+  "name": "modrinth-offline-app",
+  "version": "1.0.0",
+  "description": "Build scripts for creating a patched version of the [Modrinth App](https://github.com/modrinth/code) with offline mode support, combined with [Simple Profiles Manager](https://github.com/MagiusCHE/simple-profiles-manager).",
+  "homepage": "https://github.com/MagiusCHE/modrinth-offline-app#readme",
+  "bugs": {
+    "url": "https://github.com/MagiusCHE/modrinth-offline-app/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MagiusCHE/modrinth-offline-app.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "build:local": "./build.sh",
+    "build:steamdeck": "./build-steamdeck.sh",
+    "publish:local": "./publish.sh",
+    "build:steamdeck:remote": "ssh deck@192.168.1.146 'cd /home/deck/Applications/modrinth-offline-app && git pull && ./build-steamdeck.sh'",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
