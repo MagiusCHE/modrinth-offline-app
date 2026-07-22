@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Non-interactive SSH sessions do not load the user's shell profile.
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.local/share/pnpm:$PATH"
+
 # Working directories
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DIST_DIR="$SCRIPT_DIR/dist"
@@ -136,7 +139,7 @@ check_command() {
     else
         echo "[MISSING] $cmd not found"
         if [ "$HAS_PACMAN" = true ] || [ "$HAS_APT" = true ]; then
-            if auto_install_pkg "$pacman_pkg" "$apt_pkg"; then
+            if auto_install_pkg "$pacman_pkg" "$apt_pkg" && command -v "$cmd" &> /dev/null; then
                 echo "[INSTALLED] $cmd"
                 return 0
             fi
@@ -300,26 +303,10 @@ else
 fi
 
 # Check Node.js/npm
-check_command "npm" "nodejs" "nodejs"
+check_command "npm" "npm" "npm"
 
-# Check pnpm (install via npm if missing)
-if ! command -v pnpm &> /dev/null; then
-    echo "[MISSING] pnpm not found"
-    if command -v npm &> /dev/null; then
-        echo "    Installing pnpm via npm..."
-        if npm install -g pnpm; then
-            echo "[INSTALLED] pnpm"
-        else
-            echo "    Install with: npm install -g pnpm  OR  curl -fsSL https://get.pnpm.io/install.sh | sh -"
-            MISSING_DEPS=true
-        fi
-    else
-        echo "    Install with: npm install -g pnpm  OR  curl -fsSL https://get.pnpm.io/install.sh | sh -"
-        MISSING_DEPS=true
-    fi
-else
-    echo "[OK] pnpm found: $(command -v pnpm)"
-fi
+# Check pnpm
+check_command "pnpm" "pnpm" "pnpm"
 
 # Check appimagetool (download if missing)
 if ! command -v appimagetool &> /dev/null; then
