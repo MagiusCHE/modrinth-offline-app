@@ -1,15 +1,13 @@
 diff --git a/packages/app-lib/src/api/minecraft_auth.rs b/packages/app-lib/src/api/minecraft_auth.rs
-index 931b8e75b..640b52bbc 100644
+index 931b8e75b..7c3b9560e 100644
 --- a/packages/app-lib/src/api/minecraft_auth.rs
 +++ b/packages/app-lib/src/api/minecraft_auth.rs
-@@ -38,6 +38,15 @@ pub async fn finish_login(
+@@ -38,6 +38,13 @@ pub async fn finish_login(
  
  #[tracing::instrument]
  pub async fn get_default_user() -> crate::Result<Option<uuid::Uuid>> {
-+    // Check for offline mode via environment variable
 +    if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
 +        if !username.is_empty() {
-+            // Return the offline user's UUID
 +            let offline_creds = Credentials::offline(username);
 +            return Ok(Some(offline_creds.offline_profile.id));
 +        }
@@ -18,14 +16,12 @@ index 931b8e75b..640b52bbc 100644
      let state = State::get().await?;
      let user = Credentials::get_active(&state.pool).await?;
      Ok(user.map(|user| user.offline_profile.id))
-@@ -84,6 +93,14 @@ pub async fn remove_user(uuid: uuid::Uuid) -> crate::Result<()> {
+@@ -84,6 +91,12 @@ pub async fn remove_user(uuid: uuid::Uuid) -> crate::Result<()> {
  /// Get a copy of the list of all user credentials
  #[tracing::instrument]
  pub async fn users() -> crate::Result<Vec<Credentials>> {
-+    // Check for offline mode via environment variable
 +    if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
 +        if !username.is_empty() {
-+            // Return only the offline user when in offline mode
 +            return Ok(vec![Credentials::offline(username)]);
 +        }
 +    }
@@ -34,10 +30,10 @@ index 931b8e75b..640b52bbc 100644
      let users = Credentials::get_all(&state.pool).await?;
      Ok(users.into_iter().map(|x| x.1).collect())
 diff --git a/packages/app-lib/src/api/minecraft_skins.rs b/packages/app-lib/src/api/minecraft_skins.rs
-index 2a869a22d..417aac7bd 100644
+index dc4373e67..94f08b3ea 100644
 --- a/packages/app-lib/src/api/minecraft_skins.rs
 +++ b/packages/app-lib/src/api/minecraft_skins.rs
-@@ -34,6 +34,13 @@ mod assets {
+@@ -83,6 +83,13 @@ mod assets {
  
  mod png_util;
  
@@ -48,11 +44,11 @@ index 2a869a22d..417aac7bd 100644
 +    }
 +}
 +
- #[derive(Deserialize, Serialize, Debug)]
- pub struct Cape {
-     /// An identifier for this cape, potentially unique to the owning player.
-@@ -95,6 +102,10 @@ pub enum UrlOrBlob {
- /// can be equipped at a time. Also, at most one cape can be set as the default cape.
+ const SKIN_CHANGE_DEBOUNCE: Duration = Duration::from_secs(10);
+ 
+ static PENDING_SKIN_CHANGE: LazyLock<Mutex<PendingSkinChangeState>> =
+@@ -264,6 +271,10 @@ pub enum UrlOrBlob {
+ /// Only one cape can be equipped.
  #[tracing::instrument]
  pub async fn get_available_capes() -> crate::Result<Vec<Cape>> {
 +    if is_offline_mode() {
@@ -62,8 +58,8 @@ index 2a869a22d..417aac7bd 100644
      let state = State::get().await?;
  
      let selected_credentials = Credentials::get_default_credential(&state.pool)
-@@ -133,6 +144,10 @@ pub async fn get_available_capes() -> crate::Result<Vec<Cape>> {
- /// marked as equipped.
+@@ -304,6 +315,10 @@ pub async fn get_available_capes() -> crate::Result<Vec<Cape>> {
+ /// Exactly one returned skin is marked as equipped.
  #[tracing::instrument]
  pub async fn get_available_skins() -> crate::Result<Vec<Skin>> {
 +    if is_offline_mode() {
@@ -73,44 +69,14 @@ index 2a869a22d..417aac7bd 100644
      let state = State::get().await?;
  
      let selected_credentials = Credentials::get_default_credential(&state.pool)
-diff --git a/packages/app-lib/src/api/profile/mod.rs b/packages/app-lib/src/api/profile/mod.rs
-index d7e12139a..77543786f 100644
---- a/packages/app-lib/src/api/profile/mod.rs
-+++ b/packages/app-lib/src/api/profile/mod.rs
-@@ -761,6 +761,15 @@ pub async fn run(
-     path: &str,
-     quick_play_type: QuickPlayType,
- ) -> crate::Result<ProcessMetadata> {
-+    // Debug: check if offline mode env var is set
-+    let runtime_env = std::env::var("MODRINTH_OFFLINE_USERNAME");
-+    let compile_env = option_env!("MODRINTH_OFFLINE_USERNAME");
-+    tracing::info!(
-+        "MODRINTH_OFFLINE_USERNAME - runtime: {:?}, compile-time: {:?}",
-+        runtime_env,
-+        compile_env
-+    );
-+
-     let state = State::get().await?;
- 
-     let default_account = Credentials::get_default_credential(&state.pool)
 diff --git a/packages/app-lib/src/state/minecraft_auth.rs b/packages/app-lib/src/state/minecraft_auth.rs
-index d28938506..60b02061d 100644
+index c021a239d..ca8a57baf 100644
 --- a/packages/app-lib/src/state/minecraft_auth.rs
 +++ b/packages/app-lib/src/state/minecraft_auth.rs
-@@ -375,10 +375,26 @@ impl Credentials {
- 
-     /// Like [`get_active`](Self::get_active), but enforces credentials to be
-     /// successfully refreshed unless the network is unreachable or times out.
-+    ///
-+    /// If the `MODRINTH_OFFLINE_USERNAME` environment variable is set, returns
-+    /// fake offline credentials with that username, bypassing Microsoft authentication
-+    /// entirely. This is useful for playing on offline-mode servers or with
-+    /// custom authentication systems like Drasl.
-     #[tracing::instrument]
+@@ -447,6 +447,16 @@ impl Credentials {
      pub async fn get_default_credential(
          exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
      ) -> crate::Result<Option<Credentials>> {
-+        // Check for offline mode via environment variable (runtime only)
 +        if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
 +            if !username.is_empty() {
 +                tracing::info!(
@@ -124,25 +90,19 @@ index d28938506..60b02061d 100644
          let credentials = Self::get_active(exec).await?;
  
          if let Some(mut creds) = credentials {
-@@ -406,6 +422,42 @@ impl Credentials {
+@@ -474,6 +484,32 @@ impl Credentials {
          }
      }
  
-+    /// Creates fake offline credentials for use when bypassing Microsoft authentication.
-+    /// The UUID is generated deterministically from the username, similar to Minecraft's
-+    /// offline player UUID generation (using SHA-256 truncated to 16 bytes with UUID v4 markers).
++    /// Creates fake offline credentials for offline-mode servers.
 +    pub fn offline(username: String) -> Self {
-+        // Generate a deterministic UUID from the username
-+        // We use SHA-256 and take the first 16 bytes, then set UUID version/variant bits
 +        let offline_uuid = {
 +            let hash = sha2::Sha256::digest(
 +                format!("OfflinePlayer:{}", username).as_bytes(),
 +            );
 +            let mut bytes = [0u8; 16];
 +            bytes.copy_from_slice(&hash[..16]);
-+            // Set version to 4 (random) - this is cosmetic but makes it a valid UUID
 +            bytes[6] = (bytes[6] & 0x0f) | 0x40;
-+            // Set variant to RFC 4122
 +            bytes[8] = (bytes[8] & 0x3f) | 0x80;
 +            Uuid::from_bytes(bytes)
 +        };
@@ -151,14 +111,10 @@ index d28938506..60b02061d 100644
 +            offline_profile: MinecraftProfile {
 +                id: offline_uuid,
 +                name: username,
-+                skins: Vec::new(),
-+                capes: Vec::new(),
-+                fetch_time: None,
++                ..MinecraftProfile::default()
 +            },
-+            // Use a dummy token - offline mode servers don't validate it
 +            access_token: "offline_mode_token".to_string(),
 +            refresh_token: String::new(),
-+            // Set expiry far in the future so it never tries to refresh
 +            expires: Utc::now() + Duration::days(365 * 100),
 +            active: true,
 +        }
@@ -168,10 +124,10 @@ index d28938506..60b02061d 100644
      /// to refresh them if they are expired.
      pub async fn get_active(
 diff --git a/turbo.jsonc b/turbo.jsonc
-index 1a2365a04..b00ed6012 100644
+index f1ad4c6ec..e3dda5160 100644
 --- a/turbo.jsonc
 +++ b/turbo.jsonc
-@@ -65,7 +65,14 @@
+@@ -77,7 +77,14 @@
  			"persistent": true,
  			"inputs": ["$TURBO_DEFAULT$", ".env*"],
  			"env": ["CARGO_*", "RUST_*", "RUSTFLAGS", "FORCE_COLOR", "NEXTEST_*"],
