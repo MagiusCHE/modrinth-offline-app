@@ -1,5 +1,5 @@
 diff --git a/packages/app-lib/src/api/minecraft_auth.rs b/packages/app-lib/src/api/minecraft_auth.rs
-index 74411116..fd7ff8e5 100644
+index 931b8e75b..640b52bbc 100644
 --- a/packages/app-lib/src/api/minecraft_auth.rs
 +++ b/packages/app-lib/src/api/minecraft_auth.rs
 @@ -38,6 +38,15 @@ pub async fn finish_login(
@@ -33,27 +33,71 @@ index 74411116..fd7ff8e5 100644
      let state = State::get().await?;
      let users = Credentials::get_all(&state.pool).await?;
      Ok(users.into_iter().map(|x| x.1).collect())
+diff --git a/packages/app-lib/src/api/minecraft_skins.rs b/packages/app-lib/src/api/minecraft_skins.rs
+index 2a869a22d..417aac7bd 100644
+--- a/packages/app-lib/src/api/minecraft_skins.rs
++++ b/packages/app-lib/src/api/minecraft_skins.rs
+@@ -34,6 +34,13 @@ mod assets {
+ 
+ mod png_util;
+ 
++fn is_offline_mode() -> bool {
++    match std::env::var("MODRINTH_OFFLINE_USERNAME") {
++        Ok(username) => !username.is_empty(),
++        Err(_) => false,
++    }
++}
++
+ #[derive(Deserialize, Serialize, Debug)]
+ pub struct Cape {
+     /// An identifier for this cape, potentially unique to the owning player.
+@@ -95,6 +102,10 @@ pub enum UrlOrBlob {
+ /// can be equipped at a time. Also, at most one cape can be set as the default cape.
+ #[tracing::instrument]
+ pub async fn get_available_capes() -> crate::Result<Vec<Cape>> {
++    if is_offline_mode() {
++        return Ok(Vec::new());
++    }
++
+     let state = State::get().await?;
+ 
+     let selected_credentials = Credentials::get_default_credential(&state.pool)
+@@ -133,6 +144,10 @@ pub async fn get_available_capes() -> crate::Result<Vec<Cape>> {
+ /// marked as equipped.
+ #[tracing::instrument]
+ pub async fn get_available_skins() -> crate::Result<Vec<Skin>> {
++    if is_offline_mode() {
++        return Ok(Vec::new());
++    }
++
+     let state = State::get().await?;
+ 
+     let selected_credentials = Credentials::get_default_credential(&state.pool)
 diff --git a/packages/app-lib/src/api/profile/mod.rs b/packages/app-lib/src/api/profile/mod.rs
-index 935c837a..0427bb49 100644
+index d7e12139a..77543786f 100644
 --- a/packages/app-lib/src/api/profile/mod.rs
 +++ b/packages/app-lib/src/api/profile/mod.rs
-@@ -634,6 +634,11 @@ pub async fn run(
+@@ -761,6 +761,15 @@ pub async fn run(
      path: &str,
      quick_play_type: QuickPlayType,
  ) -> crate::Result<ProcessMetadata> {
 +    // Debug: check if offline mode env var is set
 +    let runtime_env = std::env::var("MODRINTH_OFFLINE_USERNAME");
 +    let compile_env = option_env!("MODRINTH_OFFLINE_USERNAME");
-+    tracing::info!("MODRINTH_OFFLINE_USERNAME - runtime: {:?}, compile-time: {:?}", runtime_env, compile_env);
++    tracing::info!(
++        "MODRINTH_OFFLINE_USERNAME - runtime: {:?}, compile-time: {:?}",
++        runtime_env,
++        compile_env
++    );
 +
      let state = State::get().await?;
  
      let default_account = Credentials::get_default_credential(&state.pool)
 diff --git a/packages/app-lib/src/state/minecraft_auth.rs b/packages/app-lib/src/state/minecraft_auth.rs
-index a0b8db9e..4ce27d4e 100644
+index d28938506..60b02061d 100644
 --- a/packages/app-lib/src/state/minecraft_auth.rs
 +++ b/packages/app-lib/src/state/minecraft_auth.rs
-@@ -375,10 +375,23 @@ impl Credentials {
+@@ -375,10 +375,26 @@ impl Credentials {
  
      /// Like [`get_active`](Self::get_active), but enforces credentials to be
      /// successfully refreshed unless the network is unreachable or times out.
@@ -69,7 +113,10 @@ index a0b8db9e..4ce27d4e 100644
 +        // Check for offline mode via environment variable (runtime only)
 +        if let Ok(username) = std::env::var("MODRINTH_OFFLINE_USERNAME") {
 +            if !username.is_empty() {
-+                tracing::info!("Using offline mode with username: {}", username);
++                tracing::info!(
++                    "Using offline mode with username: {}",
++                    username
++                );
 +                return Ok(Some(Credentials::offline(username)));
 +            }
 +        }
@@ -77,7 +124,7 @@ index a0b8db9e..4ce27d4e 100644
          let credentials = Self::get_active(exec).await?;
  
          if let Some(mut creds) = credentials {
-@@ -406,6 +419,42 @@ impl Credentials {
+@@ -406,6 +422,42 @@ impl Credentials {
          }
      }
  
@@ -120,3 +167,23 @@ index a0b8db9e..4ce27d4e 100644
      /// Fetches the currently selected credentials from the database, attempting
      /// to refresh them if they are expired.
      pub async fn get_active(
+diff --git a/turbo.jsonc b/turbo.jsonc
+index 1a2365a04..b00ed6012 100644
+--- a/turbo.jsonc
++++ b/turbo.jsonc
+@@ -65,7 +65,14 @@
+ 			"persistent": true,
+ 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+ 			"env": ["CARGO_*", "RUST_*", "RUSTFLAGS", "FORCE_COLOR", "NEXTEST_*"],
+-			"passThroughEnv": ["DISPLAY", "WEBKIT_DISABLE_DMABUF_RENDERER", "JAVA_HOME"]
++			"passThroughEnv": [
++				"DISPLAY",
++				"GDK_BACKEND",
++				"JAVA_HOME",
++				"MODRINTH_OFFLINE_USERNAME",
++				"WEBKIT_DISABLE_DMABUF_RENDERER",
++				"WINIT_UNIX_BACKEND"
++			]
+ 		},
+ 		"test": {
+ 			"env": [
